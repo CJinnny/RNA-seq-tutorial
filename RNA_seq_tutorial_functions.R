@@ -35,7 +35,7 @@ data_diagnosis <- function(counts) {
   boxplot <- ggplot(df, aes(x = variable, y = value, fill = variable)) + geom_boxplot() + 
     ylab("counts") + ggtitle("boxplot")
   
-  plot_grid(density_plot, boxplot, labels = "AUTO")
+  plot_grid(density_plot, boxplot, labels = "AUTO", align = "v")
 }
 
 
@@ -58,9 +58,11 @@ draw_PCA <- function(counts, ntop=20, title="PCA analysis", palatte="Spectral") 
        xlab = paste("PC1: ", round(variance[1], 2), "%"),
        ylab = paste("PC2: ", round(variance[2], 2), "%"),
        xlim = c(min, max),
-       ylim = c(min, max))
+       ylim = c(min, max),
+       cex.lab = 1.5,
+       cex.main = 2)
   points(pca$x, col = colors, pch = 16, cex = 2)
-  text(pca$x[,1], pca$x[,2], labels = colnames(counts), cex = 1, pos = 4)
+  text(pca$x[,1], pca$x[,2], labels = colnames(counts), cex = 1.5, pos = 4)
 }
 
 
