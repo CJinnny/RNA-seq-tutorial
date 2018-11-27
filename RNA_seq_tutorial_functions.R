@@ -157,7 +157,7 @@ assign_color <- function(x, threshold = 0.05) {
     else "red"
 }
 
-DE_heatmap <- function(nc, common_id, use_jitters=TRUE, km=2,
+DE_heatmap <- function(nc, common_id=NULL, use_jitters=TRUE, km=2,
                        cluster_columns=FALSE, title="heatmap"){
   
   require(ComplexHeatmap)
@@ -168,8 +168,8 @@ DE_heatmap <- function(nc, common_id, use_jitters=TRUE, km=2,
   # Provides a good way of visualizing similarities among biological replicates
   # Most importantly, it gives an idea if the normalization is good
   
-  nc = subset(nc, id %in% common_id)
-  gene = nc[,1]
+  if (!is.null(common_id)) {nc = subset(nc, id %in% common_id)
+  } gene = nc[,1]
   vals = as.matrix(nc[,2:11])
   if (use_jitters == TRUE) {vals = jitter(vals, factor = 1, amount = 0.00001)}
   score = NULL
