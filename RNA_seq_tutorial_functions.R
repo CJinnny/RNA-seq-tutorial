@@ -7,7 +7,7 @@ aggregate_func = function(x) {
     # calculate mean for numerics
     # NA will stay NA
   
-  if (x %in% c(Inf, -Inf)) paste(mean(x), "inite", sep = "")
+  if (x %in% c(Inf, -Inf)) mean(x)
   else if (is.numeric(x)) 
     round(mean(x),2)
   else if (x %in% c(TRUE, FALSE)) x[[1]][1]
