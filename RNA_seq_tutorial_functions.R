@@ -7,7 +7,7 @@ aggregate_func = function(x) {
     # calculate mean for numerics
     # NA will stay NA
   
-  if (x %in% c(Inf, -Inf)) toString(mean(x))
+  if (x %in% c(Inf, -Inf)) paste(mean(x), "inite", sep = "")
   else if (is.numeric(x)) 
     round(mean(x),2)
   else if (x %in% c(TRUE, FALSE)) x[[1]][1]
@@ -198,7 +198,7 @@ DE_heatmap <- function(nc, common_id=NULL, use_jitters=TRUE, km=2,
 
 draw_MA <- function(res, type = "DESeq", title = paste(type, "MA plot"),
                     pch = 16, cex = 0.5, xlab = "log normalized counts",
-                    ylab = "logFC", xlim = c(-2, 18), ylim = c(-5,5)) {
+                    ylab = "logFC", xlim = c(-5, 18), ylim = c(-5,5)) {
   
   
   res = data.frame(res)
