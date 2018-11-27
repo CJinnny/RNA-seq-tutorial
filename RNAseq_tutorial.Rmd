@@ -298,3 +298,6 @@ draw_volcano(edgeR_res, type="edgeR")
 draw_volcano(limma_res, type="limma")
 ```
 
+```{r}
+sessionInfo()
+```
