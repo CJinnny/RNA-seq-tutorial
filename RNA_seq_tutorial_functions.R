@@ -195,7 +195,7 @@ DE_heatmap <- function(nc, common_id=NULL, use_jitters=TRUE, km=2,
 }
 
 draw_MA <- function(res, type = "DESeq", title = paste(type, "MA plot"),
-                    pch = 16, cex = 0.5, xlab = "log normalized counts",
+                    pch = 16, cex = 1, xlab = "log normalized counts",
                     ylab = "logFC", xlim = c(-2, 18), ylim = c(-5,5)) {
   
   
@@ -220,7 +220,10 @@ draw_MA <- function(res, type = "DESeq", title = paste(type, "MA plot"),
        ylab = ylab,
        xlim = xlim,
        ylim = ylim,
-       col = sapply(z, assign_color))
+       col = sapply(z, assign_color),
+       cex.lab = 1.5,
+       cex.main = 2
+       )
 }
   
 
@@ -255,7 +258,9 @@ draw_volcano <- function(res, type = "DESeq",
            ylab = expression(-log[10]~pvalue),
            xlim = xlim,
            ylim = ylim,
-           col = sapply(z, assign_color)
+           col = sapply(z, assign_color),
+           cex.lab = 1.5,
+           cex.main = 2
     )
 }
 
