@@ -1,0 +1,300 @@
+---
+title: "RNAseq_tutorial"
+author: "Jin Cui"
+date: "26/11/2018"
+output: 
+  html_document:
+    toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=20, fig.height=8) 
+```
+
+
+```{r }
+library(pacman)
+pacman::p_load(edgeR, RColorBrewer, gplots, ggplot2, reshape2, DT, cowplot,
+               limma, DESeq, DESeq2, data.table, e1071, ComplexHeatmap)
+```
+
+## Source functions
+
+```{r}
+source("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/RNA_seq_tutorial_functions.R")
+
+```
+
+## Data merging
+This data came out of Kallisto software, gene counts are the sum of trancript pseudocounts. These counts are not in round numbers, so we need to round them to integers first.
+
+Here I created my own transcriptome assembly using StringTie <https://ccb.jhu.edu/software/stringtie/>, hense the "MSTRG." gene_id. 
+
+The reason I did that was because I not only want to study genes found in the reference genome, but also characterize new transcripts.
+
+In order to know gene functions, we can convert MSTRG id into maize reference genome id (v4), which is already well characterized.
+
+```{r warning=FALSE}
+require(data.table)
+data <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/genes.txt", sep = "\t")
+data[,6:15] = round(data[,6:15])
+
+id_conv <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/MSTRG_to_Zm_id.txt", header = FALSE, sep = "\t")
+functions <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/B73v4_gene_function.txt", header = FALSE, sep = "\t")
+functions <- subset(functions, select = c("V1", "V2"))
+colnames(id_conv) <- c("MSTRG_gene_id", "v4_gene_id")
+colnames(functions) <- c("v4_gene_id", "gene_function")
+annotations = merge(id_conv, functions, by = "v4_gene_id", all.x = TRUE)
+data <- merge(data, annotations, by = "MSTRG_gene_id", all.x = TRUE)
+data <- aggregate(data, 
+                  by = list(data$MSTRG_gene_id),
+                  FUN = aggregate_func
+                  )
+data <- na.omit(data, cols="v4_gene_id")
+data <- data.frame(data, row.names = 1)
+setnames(data, old = c("UU1", "UU2", "UU3", "UU4", "UU5", "WW1", "WW2", "WW3", "WW4", "WW5"), 
+         new = c("U1", "U2","U3","U4","U5", "W1", "W2","W3","W4","W5"))
+head(data)
+```
+
+```{r warning=FALSE}
+counts <- data[,6:15]
+require(e1071)
+data_diagnosis(counts)
+```
+
+# Data transformation
+Data is skewed: most values are around 0, but few outliers have high values.
+
+We need to do data transformations for PCA plot, otherwise outliers will have a great impact on the clustering.
+
+log transformation: logcounts = log2(counts + 1)
+
+DESeq2::rlog(): "regularized log" transformation. For more information 
+see <https://rdrr.io/bioc/DESeq2/man/rlog.html>
+
+edgeR::cpm(): "counts per million" transformation. For more information 
+see <https://rdrr.io/bioc/edgeR/man/cpm.html>
+
+DESeq2:varianceStabilizingTransformation(): "variance stabilizing transformation". For more information 
+see <https://rdrr.io/bioc/DESeq2/man/varianceStabilizingTransformation.html>
+
+```{r message=FALSE}
+require(DESeq2)
+require(edgeR)
+logcounts = log2(counts + 1)
+rlogcounts = rlog(as.matrix(counts))
+rownames(rlogcounts) = rownames(logcounts)
+cpmcounts = cpm(as.matrix(counts), prior.count = 2, log = TRUE)
+vstcounts = varianceStabilizingTransformation(as.matrix(counts))
+
+```
+
+```{r warning=FALSE}
+data_diagnosis(logcounts)
+
+```
+
+```{r warning=FALSE}
+data_diagnosis(rlogcounts)
+```
+
+```{r warning=FALSE}
+data_diagnosis(cpmcounts)
+```
+
+```{r warning=FALSE}
+data_diagnosis(vstcounts)
+```
+
+# Principle Component Analysis (PCA)
+
+```{r fig1, fig.height = 12, fig.width = 18}
+require(graphics)
+require(RColorBrewer)
+par(mfrow=c(2,3), mar=c(5.1, 4.6, 4.1, 1.6))
+draw_PCA(counts, title = "PCA on raw data")
+draw_PCA(logcounts, title = "PCA on log transformed data")
+draw_PCA(rlogcounts, title = "PCA on rlog transformed data")
+draw_PCA(cpmcounts, title = "PCA on cpm transformed data")
+draw_PCA(vstcounts, title = "PCA on vst transformed data")
+```
+
+# Draw multidimensional scaling (MDS)
+
+```{r fig2, fig.height = 12, fig.width = 18}
+par(mfrow=c(2,3))
+plotMDS(counts, col = c(rep("red", 5), rep("blue", 5)), cex = 1.5)
+title("MDS plot on raw data")
+plotMDS(logcounts, col = c(rep("red", 5), rep("blue", 5)), cex = 1.5)
+title("MDS plot on log transformed data")
+plotMDS(rlogcounts, col = c(rep("red", 5), rep("blue", 5)), cex = 1.5)
+title("MDS plot on rlog transformed data")
+plotMDS(cpmcounts, col = c(rep("red", 5), rep("blue", 5)), cex = 1.5)
+title("MDS plot on cpm transformed data")
+plotMDS(vstcounts, col = c(rep("red", 5), rep("blue", 5)), cex = 1.5)
+title("MDS plot on vst transformed data")
+
+```
+
+# Draw correlation heatmap
+
+```{r fig3, fig.height = 12, fig.width = 12}
+require(gplots)
+draw_corr_heatmap(as.matrix(counts), show_cellnote = TRUE, title = "clustering sample-to-sample\n distance on raw data")
+draw_corr_heatmap(as.matrix(logcounts), show_cellnote = TRUE, title = "clustering sample-to-sample\n distance on log transformed data")
+draw_corr_heatmap(rlogcounts, show_cellnote = TRUE, title = "clustering sample-to-sample\n distance on rlog transformed data")
+draw_corr_heatmap(cpmcounts, show_cellnote = TRUE, title = "clustering sample-to-sample\n distance on cpm transformed data")
+draw_corr_heatmap(vstcounts, show_cellnote = TRUE, title = "clustering sample-to-sample\n distance on vst transformed data")
+```
+
+# Set conditions for DE analysis
+
+```{r}
+conditions = factor(c(rep("Ufo",5), rep("Wt",5)))
+```
+
+# Filter low-count reads
+
+```{r}
+keep <- rowSums(cpm(counts)>1) >= 5
+table(keep)
+keep_true = data.frame(keep[which(keep == TRUE)])
+filter = subset(counts, rownames(counts) %in% rownames(keep_true))
+```
+
+# DESeq
+
+```{r}
+require(DESeq)
+cds = newCountDataSet(filter, conditions)
+cds = estimateSizeFactors(cds)
+cds = estimateDispersions(cds)
+DESeq_res = nbinomTest(cds, "Wt", "Ufo")
+rownames(DESeq_res) = DESeq_res$id
+DESeq_DE = subset(DESeq_res, (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
+DESeq_nc = counts(cds, normalized = TRUE)
+DESeq_nc = data.frame("id"=rownames(DESeq_nc), DESeq_nc)
+DESeq_nc_DE = subset(DESeq_nc, id %in% DESeq_DE$id)
+```
+
+# DESeq2
+
+```{r}
+require(DESeq2)
+colData = data.frame(samples=colnames(filter), conditions=conditions)
+dds = DESeqDataSetFromMatrix(countData = filter, colData = colData, design = ~conditions)
+dds = DESeq(dds)
+DESeq2_res = results(dds)
+DESeq2_DE = subset(data.frame(DESeq2_res), (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
+DESeq2_DE = data.frame("id"=rownames(DESeq2_DE), DESeq2_DE)
+DESeq2_nc = counts(dds, normalized = TRUE)
+DESeq2_nc = data.frame("id" = rownames(DESeq2_nc), DESeq2_nc)
+DESeq2_nc_DE = subset(DESeq2_nc, id %in% DESeq2_DE$id)
+```
+
+# edgeR
+
+```{r}
+require(edgeR)
+group = as.vector(conditions)
+dge = DGEList(counts = filter, group = group)
+dge = calcNormFactors(dge)
+dis = estimateCommonDisp(dge)
+tag = estimateTagwiseDisp(dis)
+etx = exactTest(tag)
+edgeR_res = etx$table
+edgeR_res$FDR = p.adjust(edgeR_res$PValue, method = "BH")
+edgeR_DE = subset(edgeR_res, (logFC < -1 & FDR < 0.05) | (logFC > 1 & FDR < 0.05) )
+edgeR_DE = data.frame("id" = rownames(edgeR_DE), edgeR_DE)
+edgeR_nc = tag$pseudo.counts
+edgeR_nc = data.frame("id"=rownames(edgeR_nc), edgeR_nc)
+edgeR_nc_DE = subset(edgeR_nc, id %in% edgeR_DE$id)
+```
+
+# limma
+
+```{r}
+require(limma)
+design = model.matrix(~conditions)
+voom = voom(filter, design, normalize="quantile")
+fit = lmFit(voom, design)
+fit = eBayes(fit)
+limma_res = topTable(fit, coef = NULL, n=Inf)
+limma_DE = subset(limma_res, (logFC < -1 & adj.P.Val < 0.05) | (logFC > 1 & adj.P.Val < 0.05) )
+limma_DE = data.frame("id"=rownames(limma_DE), limma_DE)
+limma_nc = 2**voom$E
+limma_nc = data.frame("id"=rownames(limma_nc), limma_nc)
+limma_nc_DE = subset(limma_nc, id %in% limma_DE$id)
+```
+
+# Compare DESeq, DESeq2, edgeR and limma DEG results
+
+```{r}
+dflist <- list(DESeq=DESeq_DE, DESeq2=DESeq2_DE, edgeR=edgeR_DE, limma=limma_DE)
+Compare <- join_id(dflist)
+Compare$message
+```
+
+# displaying table using DT library
+
+```{r}
+library(DT)
+summary <- merge(Compare$merged_table, annotations, by.x = "id", by.y = "MSTRG_gene_id", all.x = TRUE)
+datatable(summary)
+```
+
+# Draw Venndiagram
+
+```{r fig.height = 12, fig.width = 12}
+require(VennDiagram)
+draw_venndiagram(dflist, Compare$merged_table)
+```
+
+
+
+# Draw heatmap for DEGs in separate plots
+
+```{r fig4, fig.height = 12, fig.width = 12}
+require(ComplexHeatmap)
+Ht1 = DE_heatmap(DESeq_nc_DE, title = "DESeq", km = 2)
+Ht2 = DE_heatmap(DESeq2_nc_DE, title = "DESeq2", km = 2)
+Ht3 = DE_heatmap(edgeR_nc_DE, title = "edgeR", km = 2)
+Ht4 = DE_heatmap(limma_nc_DE, title = "limma", km = 2)
+Ht1
+Ht2
+Ht3
+Ht4
+```
+
+# Draw all heatmaps in one panel
+
+```{r fig5, fig.height = 8, fig.width = 18, warning = FALSE}
+Ht1 = DE_heatmap(DESeq_nc_DE, common_id=Compare$common_id, title = "DESeq", km = 2)
+Ht2 = DE_heatmap(DESeq2_nc_DE, common_id=Compare$common_id,  title = "DESeq2", km = 2)
+Ht3 = DE_heatmap(edgeR_nc_DE, common_id=Compare$common_id, title = "edgeR", km = 2)
+Ht4 = DE_heatmap(limma_nc_DE, common_id=Compare$common_id, title = "limma", km = 2)
+
+Ht1 + Ht2 + Ht3 + Ht4
+```
+
+# Draw MA plot
+
+```{r fig6, fig.height = 18, fig.width = 18}
+par(mfrow=c(2,2), mar=c(5.1, 4.6, 4.1, 1.6))
+draw_MA(DESeq_res, type="DESeq")
+draw_MA(DESeq2_res, type="DESeq2")
+draw_MA(edgeR_res, type="edgeR")
+draw_MA(limma_res, type="limma")
+```
+
+# Draw Volcano plot
+
+```{r fig7, fig.height = 18, fig.width = 18}
+par(mfrow=c(2,2), mar=c(5.1, 4.6, 4.1, 1.6))
+draw_volcano(DESeq_res, type="DESeq")
+draw_volcano(DESeq2_res, type="DESeq2")
+draw_volcano(edgeR_res, type="edgeR")
+draw_volcano(limma_res, type="limma")
+```
+
