@@ -8,7 +8,7 @@ aggregate_func = function(x) {
     # NA will stay NA
   
   if (is.numeric(x)) 
-    mean(x)
+    round(mean(x),2)
   else if (x %in% c(TRUE, FALSE)) x[[1]][1]
   else if (!is.na(x))
     toString(x)
