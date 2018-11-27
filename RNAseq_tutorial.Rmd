@@ -1,7 +1,7 @@
 ---
 title: "RNAseq_tutorial"
 author: "Jin Cui"
-date: "26/11/2018"
+date: "27/11/2018"
 output: 
   html_document:
     toc: TRUE
@@ -11,14 +11,18 @@ output:
 knitr::opts_chunk$set(fig.width=20, fig.height=8) 
 ```
 
+Some additional reading on statistical analysis of RNA-seq: 
+<http://www.nathalievialaneix.eu/doc/pdf/tutorial-rnaseq.pdf>
 
 ```{r }
+# pacman is a good package for loading packages
 library(pacman)
 pacman::p_load(edgeR, RColorBrewer, gplots, ggplot2, reshape2, DT, cowplot,
                limma, DESeq, DESeq2, data.table, e1071, ComplexHeatmap)
 ```
 
-## Source functions
+## Source R script
+I have writen several functions in an external R script, we can use those function by sourcing the function
 
 ```{r}
 source("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/RNA_seq_tutorial_functions.R")
@@ -39,10 +43,11 @@ require(data.table)
 data <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/genes.txt", sep = "\t")
 data[,6:15] = round(data[,6:15])
 
-id_conv <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/MSTRG_to_Zm_id.txt", header = FALSE, sep = "\t")
+id_conv <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/all_MSTRG_v4_v3.csv", header = TRUE, sep = ",")
+id_conv <- data.frame(id_conv, row.names = 1)
 functions <- fread("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/B73v4_gene_function.txt", header = FALSE, sep = "\t")
 functions <- subset(functions, select = c("V1", "V2"))
-colnames(id_conv) <- c("MSTRG_gene_id", "v4_gene_id")
+colnames(id_conv) <- c("v4_gene_id", "v3_gene_id", "MSTRG_gene_id")
 colnames(functions) <- c("v4_gene_id", "gene_function")
 annotations = merge(id_conv, functions, by = "v4_gene_id", all.x = TRUE)
 data <- merge(data, annotations, by = "MSTRG_gene_id", all.x = TRUE)
@@ -59,6 +64,7 @@ head(data)
 
 ```{r warning=FALSE}
 counts <- data[,6:15]
+
 require(e1071)
 data_diagnosis(counts)
 ```
@@ -150,14 +156,19 @@ draw_corr_heatmap(vstcounts, show_cellnote = TRUE, title = "clustering sample-to
 
 # Set conditions for DE analysis
 
+Here I have to relevel the conditions because by default it considers the first factor to be the reference
+
 ```{r}
 conditions = factor(c(rep("Ufo",5), rep("Wt",5)))
+conditions = relevel(conditions, ref="Wt")
+
 ```
 
 # Filter low-count reads
+I'm using cpm normalization method, filter out non-expressed genes (0 counts), you can also try more stringent filtering (e.g. cpm > 1 in at least 5 samples)
 
 ```{r}
-keep <- rowSums(cpm(counts)>1) >= 5
+keep <- rowSums(cpm(counts)>0) >= 5
 table(keep)
 keep_true = data.frame(keep[which(keep == TRUE)])
 filter = subset(counts, rownames(counts) %in% rownames(keep_true))
@@ -174,7 +185,7 @@ DESeq_res = nbinomTest(cds, "Wt", "Ufo")
 rownames(DESeq_res) = DESeq_res$id
 DESeq_DE = subset(DESeq_res, (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
 DESeq_nc = counts(cds, normalized = TRUE)
-DESeq_nc = data.frame("id"=rownames(DESeq_nc), DESeq_nc)
+DESeq_nc = data.frame("id" = rownames(DESeq_nc), DESeq_nc)
 DESeq_nc_DE = subset(DESeq_nc, id %in% DESeq_DE$id)
 ```
 
@@ -182,12 +193,12 @@ DESeq_nc_DE = subset(DESeq_nc, id %in% DESeq_DE$id)
 
 ```{r}
 require(DESeq2)
-colData = data.frame(samples=colnames(filter), conditions=conditions)
+colData = data.frame(samples = colnames(filter), conditions = conditions)
 dds = DESeqDataSetFromMatrix(countData = filter, colData = colData, design = ~conditions)
 dds = DESeq(dds)
 DESeq2_res = results(dds)
-DESeq2_DE = subset(data.frame(DESeq2_res), (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
-DESeq2_DE = data.frame("id"=rownames(DESeq2_DE), DESeq2_DE)
+DESeq2_res = data.frame("id" = rownames(DESeq2_res), DESeq2_res)
+DESeq2_DE = subset(DESeq2_res, (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
 DESeq2_nc = counts(dds, normalized = TRUE)
 DESeq2_nc = data.frame("id" = rownames(DESeq2_nc), DESeq2_nc)
 DESeq2_nc_DE = subset(DESeq2_nc, id %in% DESeq2_DE$id)
@@ -202,11 +213,11 @@ dge = DGEList(counts = filter, group = group)
 dge = calcNormFactors(dge)
 dis = estimateCommonDisp(dge)
 tag = estimateTagwiseDisp(dis)
-etx = exactTest(tag)
+etx = exactTest(tag, pair = c("Wt", "Ufo"))
 edgeR_res = etx$table
 edgeR_res$FDR = p.adjust(edgeR_res$PValue, method = "BH")
+edgeR_res = data.frame("id" = rownames(edgeR_res), edgeR_res)
 edgeR_DE = subset(edgeR_res, (logFC < -1 & FDR < 0.05) | (logFC > 1 & FDR < 0.05) )
-edgeR_DE = data.frame("id" = rownames(edgeR_DE), edgeR_DE)
 edgeR_nc = tag$pseudo.counts
 edgeR_nc = data.frame("id"=rownames(edgeR_nc), edgeR_nc)
 edgeR_nc_DE = subset(edgeR_nc, id %in% edgeR_DE$id)
@@ -220,11 +231,11 @@ design = model.matrix(~conditions)
 voom = voom(filter, design, normalize="quantile")
 fit = lmFit(voom, design)
 fit = eBayes(fit)
-limma_res = topTable(fit, coef = NULL, n=Inf)
+limma_res = topTable(fit, coef = NULL, n = Inf)
+limma_res = data.frame("id" = rownames(limma_res), limma_res)
 limma_DE = subset(limma_res, (logFC < -1 & adj.P.Val < 0.05) | (logFC > 1 & adj.P.Val < 0.05) )
-limma_DE = data.frame("id"=rownames(limma_DE), limma_DE)
 limma_nc = 2**voom$E
-limma_nc = data.frame("id"=rownames(limma_nc), limma_nc)
+limma_nc = data.frame("id" = rownames(limma_nc), limma_nc)
 limma_nc_DE = subset(limma_nc, id %in% limma_DE$id)
 ```
 
@@ -238,10 +249,42 @@ Compare$message
 
 # displaying table using DT library
 
-```{r}
-library(DT)
+```{r warning=FALSE}
+require(DT)
 summary <- merge(Compare$merged_table, annotations, by.x = "id", by.y = "MSTRG_gene_id", all.x = TRUE)
-datatable(summary)
+datatable(summary, 
+          caption = htmltools::tags$caption(
+            style = "caption-side: bottom; text-align: left;",
+            "Table 1: Summary of DEGs found in four different methods."),
+          options = list(
+            searchHighlight = TRUE
+          )
+          )
+```
+
+```{r warning=FALSE}
+summary <- merge(summary, DESeq_res[,c("id", "log2FoldChange")], by = "id")
+setnames(summary, old = "log2FoldChange", new = "DESeq_logFC")
+summary <- merge(summary, DESeq2_res[,c("id", "log2FoldChange")], by = "id")
+setnames(summary, old = "log2FoldChange", new = "DESeq2_logFC")
+summary <- merge(summary, edgeR_res[,c("id", "logFC")], by = "id")
+setnames(summary, old = "logFC", new = "edgeR_logFC")
+summary <- merge(summary, limma_res[,c("id", "logFC")], by = "id")
+setnames(summary, old = "logFC", new = "limma_logFC")
+summary = summary[,c(1,9,10,11,12,6,7,8)]
+summary = aggregate(summary, by = list(summary$id), FUN = aggregate_func)
+summary = summary[,c(1,3,4,5,6,7,8,9)]
+setnames(summary, old = "Group.1", new = "id")
+datatable(summary, filter = "top", 
+          caption = htmltools::tags$caption(
+            style = "caption-side: bottom; text-align: left;",
+            "Table 2: Summary of logFC values of DEGs."),
+          options = list(
+            autoWidth = TRUE,
+            searchHighlight = TRUE,
+            scrollX = TRUE
+            )
+          )
 ```
 
 # Draw Venndiagram
