@@ -9,6 +9,7 @@ aggregate_func = function(x) {
   
   if (is.numeric(x)) 
     mean(x)
+  else if (x %in% c(TRUE, FALSE)) x[[1]][1]
   else if (!is.na(x))
     toString(x)
   else x
@@ -195,7 +196,7 @@ DE_heatmap <- function(nc, common_id=NULL, use_jitters=TRUE, km=2,
 }
 
 draw_MA <- function(res, type = "DESeq", title = paste(type, "MA plot"),
-                    pch = 16, cex = 1, xlab = "log normalized counts",
+                    pch = 16, cex = 0.5, xlab = "log normalized counts",
                     ylab = "logFC", xlim = c(-2, 18), ylim = c(-5,5)) {
   
   
