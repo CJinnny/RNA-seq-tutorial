@@ -67,7 +67,7 @@ setnames(data, old = c("UU1", "UU2", "UU3", "UU4", "UU5", "WW1", "WW2", "WW3", "
 head(data)
 ```
 
-# Is the data homoskedastic?
+# Normality testing with skewness $ kurtosis
 
 ```{r warning=FALSE}
 counts <- data[,6:15]
