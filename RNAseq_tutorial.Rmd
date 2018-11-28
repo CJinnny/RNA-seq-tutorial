@@ -67,7 +67,7 @@ setnames(data, old = c("UU1", "UU2", "UU3", "UU4", "UU5", "WW1", "WW2", "WW3", "
 head(data)
 ```
 
-# Normality testing with skewness $ kurtosis
+# Normality testing with skewness & kurtosis
 
 ```{r warning=FALSE}
 counts <- data[,6:15]
@@ -186,9 +186,9 @@ filter = subset(counts, rownames(counts) %in% rownames(keep_true))
 ```{r}
 require(DESeq)
 cds = newCountDataSet(filter, conditions)
-cds = estimateSizeFactors(cds)
-cds = estimateDispersions(cds)
-DESeq_res = nbinomTest(cds, "Wt", "Ufo")
+cds = DESeq::estimateSizeFactors(cds)
+cds = DESeq::estimateDispersions(cds)
+DESeq_res = DESeq::nbinomTest(cds, "Wt", "Ufo")
 rownames(DESeq_res) = DESeq_res$id
 DESeq_DE = subset(DESeq_res, (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
 DESeq_nc = counts(cds, normalized = TRUE)
@@ -202,8 +202,11 @@ DESeq_nc_DE = subset(DESeq_nc, id %in% DESeq_DE$id)
 require(DESeq2)
 colData = data.frame(samples = colnames(filter), conditions = conditions)
 dds = DESeqDataSetFromMatrix(countData = filter, colData = colData, design = ~conditions)
-dds = DESeq(dds)
-DESeq2_res = results(dds)
+dds = DESeq2::estimateSizeFactors(dds)
+dds = DESeq2::estimateDispersions(dds)
+dds = DESeq2::nbinomWaldTest(dds)
+
+DESeq2_res = DESeq2::results(dds)
 DESeq2_res = data.frame("id" = rownames(DESeq2_res), DESeq2_res)
 DESeq2_DE = subset(DESeq2_res, (log2FoldChange < -1 & padj < 0.05) | (log2FoldChange > 1 & padj < 0.05) )
 DESeq2_nc = counts(dds, normalized = TRUE)
@@ -273,17 +276,17 @@ datatable(summary,
 # Add log2FoldChange
 
 ```{r warning=FALSE}
-summary <- merge(summary, DESeq_res[,c("id", "log2FoldChange")], by = "id")
-setnames(summary, old = "log2FoldChange", new = "DESeq_logFC")
-summary <- merge(summary, DESeq2_res[,c("id", "log2FoldChange")], by = "id")
-setnames(summary, old = "log2FoldChange", new = "DESeq2_logFC")
-summary <- merge(summary, edgeR_res[,c("id", "logFC")], by = "id")
-setnames(summary, old = "logFC", new = "edgeR_logFC")
-summary <- merge(summary, limma_res[,c("id", "logFC")], by = "id")
-setnames(summary, old = "logFC", new = "limma_logFC")
-summary = summary[,c(1,9,10,11,12,6,7,8)]
+summary <- merge(summary, DESeq_res[,c("id", "log2FoldChange","padj")], by = "id")
+setnames(summary, old = c("log2FoldChange", "padj"), new = c("DESeq_logFC", "DESeq_padj"))
+summary <- merge(summary, DESeq2_res[,c("id", "log2FoldChange","padj")], by = "id")
+setnames(summary, old = c("log2FoldChange", "padj"), new = c("DESeq2_logFC", "DESeq2_padj"))
+summary <- merge(summary, edgeR_res[,c("id", "logFC", "FDR")], by = "id")
+setnames(summary, old = c("logFC", "FDR"), new = c("edgeR_logFC", "edgeR_padj"))
+summary <- merge(summary, limma_res[,c("id", "logFC", "adj.P.Val")], by = "id")
+setnames(summary, old = c("logFC", "adj.P.Val"), new = c("limma_logFC", "limma_padj"))
+summary = summary[,c(1,9,10,11,12,13,14,15,16,6,7,8)]
 summary = aggregate(summary, by = list(summary$id), FUN = aggregate_func)
-summary = summary[,c(1,3,4,5,6,7,8,9)]
+summary$id <- NULL
 setnames(summary, old = "Group.1", new = "id")
 datatable(summary, filter = "top",
           rownames = FALSE,
