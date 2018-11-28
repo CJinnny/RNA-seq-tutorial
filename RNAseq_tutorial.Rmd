@@ -11,7 +11,7 @@ output:
 knitr::opts_chunk$set(fig.width=20, fig.height=8) 
 ```
 
-Some additional reading on statistical analysis of RNA-seq: 
+**Some additional reading on statistical analysis of RNA-seq: **
 <http://www.nathalievialaneix.eu/doc/pdf/tutorial-rnaseq.pdf>
 
 ```{r }
@@ -21,7 +21,8 @@ pacman::p_load(edgeR, RColorBrewer, gplots, ggplot2, reshape2, DT, cowplot,
                limma, DESeq, DESeq2, data.table, e1071, ComplexHeatmap)
 ```
 
-## Source R script
+# Source R script
+
 I have writen several functions in an external R script, we can use those function by sourcing the function
 
 ```{r}
@@ -29,12 +30,16 @@ source("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/RNA_se
 
 ```
 
-## Data merging
-This data came out of Kallisto software, gene counts are the sum of trancript pseudocounts. These counts are not in round numbers, so we need to round them to integers first.
+# Data preprocessing
 
-Here I created my own transcriptome assembly using StringTie <https://ccb.jhu.edu/software/stringtie/>, hense the "MSTRG." gene_id. 
+This is a single-end RNA-seq data from mutant Ufo1 (UU) and Wt (WW) hypocotyl tissues. Five biological replicates were used for each genotype.
+
+I created my own transcriptome assembly using StringTie <https://ccb.jhu.edu/software/stringtie/>, hense the "MSTRG" gene_id in the count data. 
 
 The reason I did that was because I not only want to study genes found in the reference genome, but also characterize new transcripts.
+
+I did pseudo-alignment and quantify transcript counts using Kallisto <https://pachterlab.github.io/kallisto/manual>. Gene counts are the sum of trancript pseudocounts. These counts are not in integers, so we need to round them first. 
+Alternatively, you scan also generate raw count data using HTSeq <https://htseq.readthedocs.io/en/release_0.10.0/> or featurecounts <http://bioinf.wehi.edu.au/featureCounts/> on genes. However, please do not use bedtools as it usually counts ambiguous alignments.
 
 In order to know gene functions, we can convert MSTRG id into maize reference genome id (v4), which is already well characterized.
 
@@ -62,6 +67,8 @@ setnames(data, old = c("UU1", "UU2", "UU3", "UU4", "UU5", "WW1", "WW2", "WW3", "
 head(data)
 ```
 
+# Is the data homoskedastic?
+
 ```{r warning=FALSE}
 counts <- data[,6:15]
 
@@ -70,11 +77,12 @@ data_diagnosis(counts)
 ```
 
 # Data transformation
-Data is skewed: most values are around 0, but few outliers have high values.
+
+Data is skewed (high skewness and high kurtosis).
 
 We need to do data transformations for PCA plot, otherwise outliers will have a great impact on the clustering.
 
-log transformation: logcounts = log2(counts + 1)
+log transformation: logcounts = log2(counts + 1).
 
 DESeq2::rlog(): "regularized log" transformation. For more information 
 see <https://rdrr.io/bioc/DESeq2/man/rlog.html>
@@ -82,8 +90,7 @@ see <https://rdrr.io/bioc/DESeq2/man/rlog.html>
 edgeR::cpm(): "counts per million" transformation. For more information 
 see <https://rdrr.io/bioc/edgeR/man/cpm.html>
 
-DESeq2:varianceStabilizingTransformation(): "variance stabilizing transformation". For more information 
-see <https://rdrr.io/bioc/DESeq2/man/varianceStabilizingTransformation.html>
+DESeq2:varianceStabilizingTransformation(): "variance stabilizing transformation". For more information see <https://rdrr.io/bioc/DESeq2/man/varianceStabilizingTransformation.html>
 
 ```{r message=FALSE}
 require(DESeq2)
@@ -113,7 +120,7 @@ data_diagnosis(cpmcounts)
 data_diagnosis(vstcounts)
 ```
 
-# Principle Component Analysis (PCA)
+# Draw PCA (Principle Component Analysis) plot
 
 ```{r fig1, fig.height = 12, fig.width = 18}
 require(graphics)
@@ -126,7 +133,7 @@ draw_PCA(cpmcounts, title = "PCA on cpm transformed data")
 draw_PCA(vstcounts, title = "PCA on vst transformed data")
 ```
 
-# Draw multidimensional scaling (MDS)
+# Draw MDS (multidimensional scaling) plot
 
 ```{r fig2, fig.height = 12, fig.width = 18}
 par(mfrow=c(2,3))
@@ -247,12 +254,13 @@ Compare <- join_id(dflist)
 Compare$message
 ```
 
-# displaying table using DT library
+# Displaying table using DT library
 
 ```{r warning=FALSE}
 require(DT)
 summary <- merge(Compare$merged_table, annotations, by.x = "id", by.y = "MSTRG_gene_id", all.x = TRUE)
-datatable(summary, 
+datatable(summary,
+          rownames = FALSE,
           caption = htmltools::tags$caption(
             style = "caption-side: bottom; text-align: left;",
             "Table 1: Summary of DEGs found in four different methods."),
@@ -261,6 +269,8 @@ datatable(summary,
           )
           )
 ```
+
+# Add log2FoldChange
 
 ```{r warning=FALSE}
 summary <- merge(summary, DESeq_res[,c("id", "log2FoldChange")], by = "id")
@@ -275,7 +285,8 @@ summary = summary[,c(1,9,10,11,12,6,7,8)]
 summary = aggregate(summary, by = list(summary$id), FUN = aggregate_func)
 summary = summary[,c(1,3,4,5,6,7,8,9)]
 setnames(summary, old = "Group.1", new = "id")
-datatable(summary, filter = "top", 
+datatable(summary, filter = "top",
+          rownames = FALSE,
           caption = htmltools::tags$caption(
             style = "caption-side: bottom; text-align: left;",
             "Table 2: Summary of logFC values of DEGs."),
@@ -287,7 +298,7 @@ datatable(summary, filter = "top",
           )
 ```
 
-# Draw Venndiagram
+# Draw Venn Diagram
 
 ```{r fig.height = 12, fig.width = 12}
 require(VennDiagram)
@@ -295,8 +306,9 @@ draw_venndiagram(dflist, Compare$merged_table)
 ```
 
 
-
 # Draw heatmap for DEGs in separate plots
+
+Cluster for Up & Down DEGs, respectively
 
 ```{r fig4, fig.height = 12, fig.width = 12}
 require(ComplexHeatmap)
@@ -310,7 +322,7 @@ Ht3
 Ht4
 ```
 
-# Draw all heatmaps in one panel
+# Draw heatmaps side-by-side using common DEGs
 
 ```{r fig5, fig.height = 8, fig.width = 18, warning = FALSE}
 Ht1 = DE_heatmap(DESeq_nc_DE, common_id=Compare$common_id, title = "DESeq", km = 2)
