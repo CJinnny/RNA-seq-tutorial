@@ -11,14 +11,19 @@ output:
 knitr::opts_chunk$set(fig.width=20, fig.height=8) 
 ```
 
-**Some additional reading on statistical analysis of RNA-seq: **
+# Description:
+
+This tutorial contains data processing, visualization and differental expression analysis of single-end RNA-seq data. The RNA-seq count data comes from plant seedling tissues of maize natural mutant _Ufo1-1_ and wild-type (_Wt_) control.You can find additional information about _Ufo1-1_ from this [paper](http://www.plantcell.org/content/30/12/3006.abstract). I created my own transcriptome assembly using StringTie <https://ccb.jhu.edu/software/stringtie/>, hense the "MSTRG" gene_id in the count data. The reason I did that was because I not only want to study genes found in the reference genome, but also characterize new transcripts. I did pseudo-alignment and quantify transcript counts using Kallisto <https://pachterlab.github.io/kallisto/manual>. Gene counts are the sum of trancript pseudocounts. These counts are not in integers, so we need to round them first. Alternatively, you scan also generate raw count data using HTSeq <https://htseq.readthedocs.io/en/release_0.10.0/> or featurecounts <http://bioinf.wehi.edu.au/featureCounts/>. However, please do not use bedtools as it usually counts ambiguous alignments.
+
+
+# Some additional reading on statistical analysis of RNA-seq:
 <http://www.nathalievialaneix.eu/doc/pdf/tutorial-rnaseq.pdf>
 
 ```{r }
 # pacman is a good package for loading packages
 library(pacman)
 pacman::p_load(edgeR, RColorBrewer, gplots, ggplot2, reshape2, DT, cowplot,
-               limma, DESeq, DESeq2, data.table, e1071, ComplexHeatmap)
+               limma, DESeq, DESeq2, data.table, e1071, ComplexHeatmap, VennDiagram)
 ```
 
 # Source R script
@@ -32,16 +37,7 @@ source("https://raw.githubusercontent.com/CJinnny/RNA-seq-tutorial/master/RNA_se
 
 # Data preprocessing
 
-This is a single-end RNA-seq data from mutant Ufo1 (UU) and Wt (WW) hypocotyl tissues. Five biological replicates were used for each genotype.
-
-I created my own transcriptome assembly using StringTie <https://ccb.jhu.edu/software/stringtie/>, hense the "MSTRG" gene_id in the count data. 
-
-The reason I did that was because I not only want to study genes found in the reference genome, but also characterize new transcripts.
-
-I did pseudo-alignment and quantify transcript counts using Kallisto <https://pachterlab.github.io/kallisto/manual>. Gene counts are the sum of trancript pseudocounts. These counts are not in integers, so we need to round them first. 
-Alternatively, you scan also generate raw count data using HTSeq <https://htseq.readthedocs.io/en/release_0.10.0/> or featurecounts <http://bioinf.wehi.edu.au/featureCounts/> on genes. However, please do not use bedtools as it usually counts ambiguous alignments.
-
-In order to know gene functions, we can convert MSTRG id into maize reference genome id (v4), which is already well characterized.
+In order to know gene functions, we can match MSTRG id into maize reference genome id (v4), which is already well characterized. Additionally, I also include maize reference genome V3 id.
 
 ```{r warning=FALSE}
 require(data.table)
@@ -64,7 +60,10 @@ data <- na.omit(data, cols="v4_gene_id")
 data <- data.frame(data, row.names = 1)
 setnames(data, old = c("UU1", "UU2", "UU3", "UU4", "UU5", "WW1", "WW2", "WW3", "WW4", "WW5"), 
          new = c("U1", "U2","U3","U4","U5", "W1", "W2","W3","W4","W5"))
-head(data)
+
+
+datatable(data, rownames = FALSE, width=0.5)
+
 ```
 
 # Normality testing with skewness & kurtosis
@@ -121,6 +120,8 @@ data_diagnosis(vstcounts)
 ```
 
 # Draw PCA (Principle Component Analysis) plot
+
+Data normalization helps with separation
 
 ```{r fig1, fig.height = 12, fig.width = 18}
 require(graphics)
@@ -253,16 +254,16 @@ limma_nc_DE = subset(limma_nc, id %in% limma_DE$id)
 
 ```{r}
 dflist <- list(DESeq=DESeq_DE, DESeq2=DESeq2_DE, edgeR=edgeR_DE, limma=limma_DE)
-Compare <- join_id(dflist)
-Compare$message
+Compare_method <- join_id(dflist)
+Compare_method$message
 ```
 
 # Displaying table using DT library
 
 ```{r warning=FALSE}
 require(DT)
-summary <- merge(Compare$merged_table, annotations, by.x = "id", by.y = "MSTRG_gene_id", all.x = TRUE)
-datatable(summary,
+Compare_summary <- merge(Compare_method$merged_table, annotations, by.x = "id", by.y = "MSTRG_gene_id", all.x = TRUE)
+datatable(Compare_summary,
           rownames = FALSE,
           caption = htmltools::tags$caption(
             style = "caption-side: bottom; text-align: left;",
@@ -276,19 +277,19 @@ datatable(summary,
 # Add log2FoldChange
 
 ```{r warning=FALSE}
-summary <- merge(summary, DESeq_res[,c("id", "log2FoldChange","padj")], by = "id")
-setnames(summary, old = c("log2FoldChange", "padj"), new = c("DESeq_logFC", "DESeq_padj"))
-summary <- merge(summary, DESeq2_res[,c("id", "log2FoldChange","padj")], by = "id")
-setnames(summary, old = c("log2FoldChange", "padj"), new = c("DESeq2_logFC", "DESeq2_padj"))
-summary <- merge(summary, edgeR_res[,c("id", "logFC", "FDR")], by = "id")
-setnames(summary, old = c("logFC", "FDR"), new = c("edgeR_logFC", "edgeR_padj"))
-summary <- merge(summary, limma_res[,c("id", "logFC", "adj.P.Val")], by = "id")
-setnames(summary, old = c("logFC", "adj.P.Val"), new = c("limma_logFC", "limma_padj"))
-summary = summary[,c(1,9,10,11,12,13,14,15,16,6,7,8)]
-summary = aggregate(summary, by = list(summary$id), FUN = aggregate_func)
-summary$id <- NULL
-setnames(summary, old = "Group.1", new = "id")
-datatable(summary, filter = "top",
+Compare_summary <- merge(Compare_summary, DESeq_res[,c("id", "log2FoldChange","padj")], by = "id")
+setnames(Compare_summary, old = c("log2FoldChange", "padj"), new = c("DESeq_logFC", "DESeq_padj"))
+Compare_summary <- merge(Compare_summary, DESeq2_res[,c("id", "log2FoldChange","padj")], by = "id")
+setnames(Compare_summary, old = c("log2FoldChange", "padj"), new = c("DESeq2_logFC", "DESeq2_padj"))
+Compare_summary <- merge(Compare_summary, edgeR_res[,c("id", "logFC", "FDR")], by = "id")
+setnames(Compare_summary, old = c("logFC", "FDR"), new = c("edgeR_logFC", "edgeR_padj"))
+Compare_summary <- merge(Compare_summary, limma_res[,c("id", "logFC", "adj.P.Val")], by = "id")
+setnames(Compare_summary, old = c("logFC", "adj.P.Val"), new = c("limma_logFC", "limma_padj"))
+Compare_summary = Compare_summary[,c(1,9,10,11,12,13,14,15,16,6,7,8)]
+Compare_summary = aggregate(Compare_summary, by = list(Compare_summary$id), FUN = aggregate_func)
+Compare_summary$id <- NULL
+setnames(Compare_summary, old = "Group.1", new = "id")
+datatable(Compare_summary, filter = "top",
           rownames = FALSE,
           caption = htmltools::tags$caption(
             style = "caption-side: bottom; text-align: left;",
@@ -305,7 +306,7 @@ datatable(summary, filter = "top",
 
 ```{r fig.height = 12, fig.width = 12}
 require(VennDiagram)
-draw_venndiagram(dflist, Compare$merged_table)
+draw_venndiagram(dflist, Compare_method$merged_table)
 ```
 
 
@@ -325,13 +326,13 @@ Ht3
 Ht4
 ```
 
-# Draw heatmaps side-by-side using common DEGs
+# Draw heatmaps side-by-side on common DEGs
 
 ```{r fig5, fig.height = 8, fig.width = 18, warning = FALSE}
-Ht1 = DE_heatmap(DESeq_nc_DE, common_id=Compare$common_id, title = "DESeq", km = 2)
-Ht2 = DE_heatmap(DESeq2_nc_DE, common_id=Compare$common_id,  title = "DESeq2", km = 2)
-Ht3 = DE_heatmap(edgeR_nc_DE, common_id=Compare$common_id, title = "edgeR", km = 2)
-Ht4 = DE_heatmap(limma_nc_DE, common_id=Compare$common_id, title = "limma", km = 2)
+Ht1 = DE_heatmap(DESeq_nc_DE, common_id=Compare_method$common_id, title = "DESeq", km = 2)
+Ht2 = DE_heatmap(DESeq2_nc_DE,common_id=Compare_method$common_id, title = "DESeq2",km = 2)
+Ht3 = DE_heatmap(edgeR_nc_DE, common_id=Compare_method$common_id, title = "edgeR", km = 2)
+Ht4 = DE_heatmap(limma_nc_DE, common_id=Compare_method$common_id, title = "limma", km = 2)
 
 Ht1 + Ht2 + Ht3 + Ht4
 ```
